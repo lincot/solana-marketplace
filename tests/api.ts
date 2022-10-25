@@ -17,6 +17,7 @@ import {
 } from "@metaplex-foundation/mpl-auction-house";
 import { NATIVE_MINT } from "@solana/spl-token";
 import {
+  Creator,
   findAssociatedTokenAccountPda,
   findAuctionHouseBuyerEscrowPda,
   findAuctionHouseFeePda,
@@ -76,39 +77,38 @@ export async function sell(
   ctx: Context,
   authority: PublicKey,
   seller: Keypair,
-  nft: Nft,
-  price: number
+  mint: PublicKey,
+  metadata: PublicKey,
+  price: number | BN,
+  amount: number | BN
 ): Promise<void> {
   const auctionHouse = findAuctionHousePda(authority, NATIVE_MINT);
   const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
-  const tokenAccount = findAssociatedTokenAccountPda(
-    nft.mint.address,
-    seller.publicKey
-  );
+  const tokenAccount = findAssociatedTokenAccountPda(mint, seller.publicKey);
   const sellerTradeState = findAuctionHouseTradeStatePda(
     auctionHouse,
     seller.publicKey,
     tokenAccount,
     NATIVE_MINT,
-    nft.mint.address,
+    mint,
     new BN(price),
-    new BN(1)
+    new BN(amount)
   );
   const freeSellerTradeState = findAuctionHouseTradeStatePda(
     auctionHouse,
     seller.publicKey,
     tokenAccount,
     NATIVE_MINT,
-    nft.mint.address,
+    mint,
     new BN(0),
-    new BN(1)
+    new BN(amount)
   );
   const programAsSigner = findAuctionHouseProgramAsSignerPda();
   const ix = createSellInstruction(
     {
       wallet: seller.publicKey,
       tokenAccount,
-      metadata: nft.metadataAddress,
+      metadata,
       authority,
       auctionHouse,
       auctionHouseFeeAccount,
@@ -121,7 +121,7 @@ export async function sell(
       freeTradeStateBump: freeSellerTradeState.bump,
       programAsSignerBump: programAsSigner.bump,
       buyerPrice: price,
-      tokenSize: 1,
+      tokenSize: amount,
     }
   );
   await sendAndConfirmTransaction(
@@ -136,12 +136,14 @@ export async function buy(
   authority: PublicKey,
   seller: PublicKey,
   buyer: Keypair,
-  nft: Nft,
-  price: number
+  mint: PublicKey,
+  metadata: PublicKey,
+  price: number | BN,
+  amount: number | BN
 ): Promise<void> {
   const auctionHouse = findAuctionHousePda(authority, NATIVE_MINT);
   const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
-  const tokenAccount = findAssociatedTokenAccountPda(nft.mint.address, seller);
+  const tokenAccount = findAssociatedTokenAccountPda(mint, seller);
   const escrowPaymentAccount = findAuctionHouseBuyerEscrowPda(
     auctionHouse,
     buyer.publicKey
@@ -151,9 +153,9 @@ export async function buy(
     buyer.publicKey,
     tokenAccount,
     NATIVE_MINT,
-    nft.mint.address,
+    mint,
     new BN(price),
-    new BN(1)
+    new BN(amount)
   );
   const ix = createBuyInstruction(
     {
@@ -162,7 +164,7 @@ export async function buy(
       transferAuthority: buyer.publicKey,
       treasuryMint: NATIVE_MINT,
       tokenAccount,
-      metadata: nft.metadataAddress,
+      metadata,
       escrowPaymentAccount,
       authority,
       auctionHouse,
@@ -223,13 +225,16 @@ export async function executeSale(
   authority: PublicKey,
   seller: PublicKey,
   buyer: Keypair,
-  nft: Nft,
-  price: number
+  mint: PublicKey,
+  metadata: PublicKey,
+  price: number,
+  amount: number | BN,
+  creators: Creator[]
 ): Promise<void> {
   const auctionHouse = findAuctionHousePda(authority, NATIVE_MINT);
   const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
   const auctionHouseTreasury = findAuctionHouseTreasuryPda(auctionHouse);
-  const tokenAccount = findAssociatedTokenAccountPda(nft.mint.address, seller);
+  const tokenAccount = findAssociatedTokenAccountPda(mint, seller);
   const escrowPaymentAccount = findAuctionHouseBuyerEscrowPda(
     auctionHouse,
     buyer.publicKey
@@ -239,27 +244,27 @@ export async function executeSale(
     buyer.publicKey,
     tokenAccount,
     NATIVE_MINT,
-    nft.mint.address,
+    mint,
     new BN(price),
-    new BN(1)
+    new BN(amount)
   );
   const sellerTradeState = findAuctionHouseTradeStatePda(
     auctionHouse,
     seller,
     tokenAccount,
     NATIVE_MINT,
-    nft.mint.address,
+    mint,
     new BN(price),
-    new BN(1)
+    new BN(amount)
   );
   const freeTradeState = findAuctionHouseTradeStatePda(
     auctionHouse,
     seller,
     tokenAccount,
     NATIVE_MINT,
-    nft.mint.address,
+    mint,
     new BN(0),
-    new BN(1)
+    new BN(amount)
   );
   const programAsSigner = findAuctionHouseProgramAsSignerPda();
   const ix = createExecuteSaleInstruction(
@@ -267,13 +272,13 @@ export async function executeSale(
       buyer: buyer.publicKey,
       seller,
       tokenAccount,
-      tokenMint: nft.mint.address,
-      metadata: nft.metadataAddress,
+      tokenMint: mint,
+      metadata,
       treasuryMint: NATIVE_MINT,
       escrowPaymentAccount,
       sellerPaymentReceiptAccount: seller,
       buyerReceiptTokenAccount: findAssociatedTokenAccountPda(
-        nft.mint.address,
+        mint,
         buyer.publicKey
       ),
       authority,
@@ -293,7 +298,7 @@ export async function executeSale(
       tokenSize: 1,
     }
   );
-  for (let creator of nft.creators) {
+  for (let creator of creators) {
     ix.keys = ix.keys.concat([
       { pubkey: creator.address, isSigner: false, isWritable: true },
     ]);
