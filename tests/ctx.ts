@@ -21,8 +21,6 @@ export class Context {
   seller: Keypair;
   buyer: Keypair;
 
-  nft: Nft;
-
   constructor() {
     this.provider = anchor.AnchorProvider.env();
     anchor.setProvider(this.provider);
@@ -40,13 +38,5 @@ export class Context {
       this.seller.publicKey,
       this.buyer.publicKey,
     ]);
-
-    this.nft = (
-      await this.metaplex.use(keypairIdentity(this.seller)).nfts().create({
-        uri: "https://arweave.net/123",
-        name: "My NFT",
-        sellerFeeBasisPoints: 100,
-      })
-    ).nft;
   }
 }

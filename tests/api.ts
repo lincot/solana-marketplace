@@ -5,12 +5,14 @@ import {
   Transaction,
   sendAndConfirmTransaction,
   SystemProgram,
+  TransactionInstruction,
 } from "@solana/web3.js";
 import { Context } from "./ctx";
 import {
   createBuyInstruction,
   createCreateAuctionHouseInstruction,
   createDepositInstruction,
+  createExecutePartialSaleInstruction,
   createExecuteSaleInstruction,
   createSellInstruction,
   createWithdrawFromTreasuryInstruction,
@@ -141,8 +143,13 @@ export async function buy(
   mint: PublicKey,
   metadata: PublicKey,
   price: number | BN,
-  amount: number | BN
+  amount: number | BN,
+  amountToBuy: number | BN
 ): Promise<void> {
+  const partialOrderPrice = new BN(price)
+    .div(new BN(amount))
+    .mul(new BN(amountToBuy));
+
   const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
     creator: authority,
     treasuryMint: NATIVE_MINT,
@@ -161,8 +168,8 @@ export async function buy(
     tokenAccount,
     treasuryMint: NATIVE_MINT,
     tokenMint: mint,
-    price: new BN(price) as BigNumber,
-    tokenSize: new BN(amount) as BigNumber,
+    price: new BN(partialOrderPrice) as BigNumber,
+    tokenSize: new BN(amountToBuy) as BigNumber,
   });
   const ix = createBuyInstruction(
     {
@@ -181,8 +188,8 @@ export async function buy(
     {
       tradeStateBump: buyerTradeState.bump,
       escrowPaymentBump: escrowPaymentAccount.bump,
-      buyerPrice: price,
-      tokenSize: 1,
+      buyerPrice: partialOrderPrice,
+      tokenSize: amountToBuy,
     }
   );
   await sendAndConfirmTransaction(
@@ -241,8 +248,13 @@ export async function executeSale(
   metadata: PublicKey,
   price: number,
   amount: number | BN,
-  creators: Creator[]
+  amountToBuy: number | BN,
+  creators: PublicKey[]
 ): Promise<void> {
+  const partialOrderPrice = new BN(price)
+    .div(new BN(amount))
+    .mul(new BN(amountToBuy));
+
   const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
     creator: authority,
     treasuryMint: NATIVE_MINT,
@@ -264,8 +276,8 @@ export async function executeSale(
     tokenAccount,
     treasuryMint: NATIVE_MINT,
     tokenMint: mint,
-    price: new BN(price) as BigNumber,
-    tokenSize: new BN(amount) as BigNumber,
+    price: new BN(partialOrderPrice) as BigNumber,
+    tokenSize: new BN(amountToBuy) as BigNumber,
   });
   const sellerTradeState = ctx.auctionHousePdasClient.tradeState({
     auctionHouse,
@@ -286,42 +298,79 @@ export async function executeSale(
     tokenSize: new BN(amount) as BigNumber,
   });
   const programAsSigner = ctx.auctionHousePdasClient.programAsSigner();
-  const ix = createExecuteSaleInstruction(
-    {
-      buyer: buyer.publicKey,
-      seller,
-      tokenAccount,
-      tokenMint: mint,
-      metadata,
-      treasuryMint: NATIVE_MINT,
-      escrowPaymentAccount,
-      sellerPaymentReceiptAccount: seller,
-      buyerReceiptTokenAccount: await getAssociatedTokenAddress(
-        mint,
-        buyer.publicKey
-      ),
-      authority,
-      auctionHouse,
-      auctionHouseFeeAccount,
-      auctionHouseTreasury,
-      buyerTradeState,
-      sellerTradeState,
-      freeTradeState,
-      programAsSigner,
-    },
-    {
-      escrowPaymentBump: escrowPaymentAccount.bump,
-      freeTradeStateBump: freeTradeState.bump,
-      programAsSignerBump: programAsSigner.bump,
-      buyerPrice: price,
-      tokenSize: 1,
-    }
-  );
-  for (let creator of creators) {
-    ix.keys = ix.keys.concat([
-      { pubkey: creator.address, isSigner: false, isWritable: true },
-    ]);
+  let ix: TransactionInstruction;
+  if (amount == amountToBuy) {
+    ix = createExecuteSaleInstruction(
+      {
+        buyer: buyer.publicKey,
+        seller,
+        tokenAccount,
+        tokenMint: mint,
+        metadata,
+        treasuryMint: NATIVE_MINT,
+        escrowPaymentAccount,
+        sellerPaymentReceiptAccount: seller,
+        buyerReceiptTokenAccount: await getAssociatedTokenAddress(
+          mint,
+          buyer.publicKey
+        ),
+        authority,
+        auctionHouse,
+        auctionHouseFeeAccount,
+        auctionHouseTreasury,
+        buyerTradeState,
+        sellerTradeState,
+        freeTradeState,
+        programAsSigner,
+      },
+      {
+        escrowPaymentBump: escrowPaymentAccount.bump,
+        freeTradeStateBump: freeTradeState.bump,
+        programAsSignerBump: programAsSigner.bump,
+        buyerPrice: price,
+        tokenSize: amount,
+      }
+    );
+  } else {
+    ix = createExecutePartialSaleInstruction(
+      {
+        buyer: buyer.publicKey,
+        seller,
+        tokenAccount,
+        tokenMint: mint,
+        metadata,
+        treasuryMint: NATIVE_MINT,
+        escrowPaymentAccount,
+        sellerPaymentReceiptAccount: seller,
+        buyerReceiptTokenAccount: await getAssociatedTokenAddress(
+          mint,
+          buyer.publicKey
+        ),
+        authority,
+        auctionHouse,
+        auctionHouseFeeAccount,
+        auctionHouseTreasury,
+        buyerTradeState,
+        sellerTradeState,
+        freeTradeState,
+        programAsSigner,
+      },
+      {
+        escrowPaymentBump: escrowPaymentAccount.bump,
+        freeTradeStateBump: freeTradeState.bump,
+        programAsSignerBump: programAsSigner.bump,
+        buyerPrice: price,
+        tokenSize: amount,
+        partialOrderPrice,
+        partialOrderSize: amountToBuy,
+      }
+    );
   }
+
+  for (let pubkey of creators) {
+    ix.keys = ix.keys.concat([{ pubkey, isSigner: false, isWritable: true }]);
+  }
+
   await sendAndConfirmTransaction(
     ctx.provider.connection,
     new Transaction().add(ix),
