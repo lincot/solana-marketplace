@@ -1,6 +1,6 @@
 {
   "devDependencies": {
-    "@metaplex-foundation/js": "^0.12.2",
+    "@metaplex-foundation/js": "^0.17.2",
     "@metaplex-foundation/mpl-auction-house": "^2.3.0",
     "@metaplex-foundation/mpl-token-metadata": "^2.3.3",
     "@project-serum/anchor": "^0.25.0",

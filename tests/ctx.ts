@@ -2,11 +2,17 @@ import * as anchor from "@project-serum/anchor";
 import NodeWallet from "@project-serum/anchor/dist/cjs/nodewallet";
 import { Keypair } from "@solana/web3.js";
 import { airdrop } from "./utils";
-import { keypairIdentity, Metaplex, Nft } from "@metaplex-foundation/js";
+import {
+  AuctionHousePdasClient,
+  keypairIdentity,
+  Metaplex,
+  Nft,
+} from "@metaplex-foundation/js";
 
 export class Context {
   provider: anchor.AnchorProvider;
   metaplex: Metaplex;
+  auctionHousePdasClient: AuctionHousePdasClient;
 
   payer: Keypair;
 
@@ -21,6 +27,7 @@ export class Context {
     this.provider = anchor.AnchorProvider.env();
     anchor.setProvider(this.provider);
     this.metaplex = new Metaplex(this.provider.connection);
+    this.auctionHousePdasClient = new AuctionHousePdasClient(this.metaplex);
     this.payer = (this.provider.wallet as NodeWallet).payer;
     this.auctionHouseAuthority = new Keypair();
     this.seller = new Keypair();
@@ -35,15 +42,11 @@ export class Context {
     ]);
 
     this.nft = (
-      await this.metaplex
-        .use(keypairIdentity(this.seller))
-        .nfts()
-        .create({
-          uri: "https://arweave.net/123",
-          name: "My NFT",
-          sellerFeeBasisPoints: 100,
-        })
-        .run()
+      await this.metaplex.use(keypairIdentity(this.seller)).nfts().create({
+        uri: "https://arweave.net/123",
+        name: "My NFT",
+        sellerFeeBasisPoints: 100,
+      })
     ).nft;
   }
 }

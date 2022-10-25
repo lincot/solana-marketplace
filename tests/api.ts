@@ -15,18 +15,8 @@ import {
   createSellInstruction,
   createWithdrawFromTreasuryInstruction,
 } from "@metaplex-foundation/mpl-auction-house";
-import { NATIVE_MINT } from "@solana/spl-token";
-import {
-  Creator,
-  findAssociatedTokenAccountPda,
-  findAuctionHouseBuyerEscrowPda,
-  findAuctionHouseFeePda,
-  findAuctionHousePda,
-  findAuctionHouseProgramAsSignerPda,
-  findAuctionHouseTradeStatePda,
-  findAuctionHouseTreasuryPda,
-  Nft,
-} from "@metaplex-foundation/js";
+import { NATIVE_MINT, getAssociatedTokenAddress } from "@solana/spl-token";
+import { Creator, BigNumber } from "@metaplex-foundation/js";
 
 export async function createAuctionHouse(
   ctx: Context,
@@ -35,9 +25,16 @@ export async function createAuctionHouse(
   requiresSignOff: boolean,
   canChangeSalePrice: boolean
 ): Promise<void> {
-  const auctionHouse = findAuctionHousePda(authority.publicKey, NATIVE_MINT);
-  const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
-  const auctionHouseTreasury = findAuctionHouseTreasuryPda(auctionHouse);
+  const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
+    creator: authority.publicKey,
+    treasuryMint: NATIVE_MINT,
+  });
+  const auctionHouseFeeAccount = ctx.auctionHousePdasClient.fee({
+    auctionHouse,
+  });
+  const auctionHouseTreasury = ctx.auctionHousePdasClient.treasury({
+    auctionHouse,
+  });
   const ix = createCreateAuctionHouseInstruction(
     {
       treasuryMint: NATIVE_MINT,
@@ -82,28 +79,33 @@ export async function sell(
   price: number | BN,
   amount: number | BN
 ): Promise<void> {
-  const auctionHouse = findAuctionHousePda(authority, NATIVE_MINT);
-  const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
-  const tokenAccount = findAssociatedTokenAccountPda(mint, seller.publicKey);
-  const sellerTradeState = findAuctionHouseTradeStatePda(
+  const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
+    creator: authority,
+    treasuryMint: NATIVE_MINT,
+  });
+  const auctionHouseFeeAccount = ctx.auctionHousePdasClient.fee({
     auctionHouse,
-    seller.publicKey,
-    tokenAccount,
-    NATIVE_MINT,
-    mint,
-    new BN(price),
-    new BN(amount)
-  );
-  const freeSellerTradeState = findAuctionHouseTradeStatePda(
+  });
+  const tokenAccount = await getAssociatedTokenAddress(mint, seller.publicKey);
+  const sellerTradeState = ctx.auctionHousePdasClient.tradeState({
     auctionHouse,
-    seller.publicKey,
+    wallet: seller.publicKey,
     tokenAccount,
-    NATIVE_MINT,
-    mint,
-    new BN(0),
-    new BN(amount)
-  );
-  const programAsSigner = findAuctionHouseProgramAsSignerPda();
+    treasuryMint: NATIVE_MINT,
+    tokenMint: mint,
+    price: new BN(price) as BigNumber,
+    tokenSize: new BN(amount) as BigNumber,
+  });
+  const freeSellerTradeState = ctx.auctionHousePdasClient.tradeState({
+    auctionHouse,
+    wallet: seller.publicKey,
+    tokenAccount,
+    treasuryMint: NATIVE_MINT,
+    tokenMint: mint,
+    price: new BN(0) as BigNumber,
+    tokenSize: new BN(amount) as BigNumber,
+  });
+  const programAsSigner = ctx.auctionHousePdasClient.programAsSigner();
   const ix = createSellInstruction(
     {
       wallet: seller.publicKey,
@@ -141,22 +143,27 @@ export async function buy(
   price: number | BN,
   amount: number | BN
 ): Promise<void> {
-  const auctionHouse = findAuctionHousePda(authority, NATIVE_MINT);
-  const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
-  const tokenAccount = findAssociatedTokenAccountPda(mint, seller);
-  const escrowPaymentAccount = findAuctionHouseBuyerEscrowPda(
+  const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
+    creator: authority,
+    treasuryMint: NATIVE_MINT,
+  });
+  const auctionHouseFeeAccount = ctx.auctionHousePdasClient.fee({
     auctionHouse,
-    buyer.publicKey
-  );
-  const buyerTradeState = findAuctionHouseTradeStatePda(
+  });
+  const tokenAccount = await getAssociatedTokenAddress(mint, seller);
+  const escrowPaymentAccount = ctx.auctionHousePdasClient.buyerEscrow({
     auctionHouse,
-    buyer.publicKey,
+    buyer: buyer.publicKey,
+  });
+  const buyerTradeState = ctx.auctionHousePdasClient.tradeState({
+    auctionHouse,
+    wallet: buyer.publicKey,
     tokenAccount,
-    NATIVE_MINT,
-    mint,
-    new BN(price),
-    new BN(amount)
-  );
+    treasuryMint: NATIVE_MINT,
+    tokenMint: mint,
+    price: new BN(price) as BigNumber,
+    tokenSize: new BN(amount) as BigNumber,
+  });
   const ix = createBuyInstruction(
     {
       wallet: buyer.publicKey,
@@ -191,12 +198,17 @@ export async function deposit(
   depositor: Keypair,
   amount: number
 ): Promise<void> {
-  const auctionHouse = findAuctionHousePda(authority, NATIVE_MINT);
-  const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
-  const escrowPaymentAccount = findAuctionHouseBuyerEscrowPda(
+  const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
+    creator: authority,
+    treasuryMint: NATIVE_MINT,
+  });
+  const auctionHouseFeeAccount = ctx.auctionHousePdasClient.fee({
     auctionHouse,
-    depositor.publicKey
-  );
+  });
+  const escrowPaymentAccount = ctx.auctionHousePdasClient.buyerEscrow({
+    auctionHouse,
+    buyer: depositor.publicKey,
+  });
   const ix = createDepositInstruction(
     {
       wallet: depositor.publicKey,
@@ -231,42 +243,49 @@ export async function executeSale(
   amount: number | BN,
   creators: Creator[]
 ): Promise<void> {
-  const auctionHouse = findAuctionHousePda(authority, NATIVE_MINT);
-  const auctionHouseFeeAccount = findAuctionHouseFeePda(auctionHouse);
-  const auctionHouseTreasury = findAuctionHouseTreasuryPda(auctionHouse);
-  const tokenAccount = findAssociatedTokenAccountPda(mint, seller);
-  const escrowPaymentAccount = findAuctionHouseBuyerEscrowPda(
+  const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
+    creator: authority,
+    treasuryMint: NATIVE_MINT,
+  });
+  const auctionHouseFeeAccount = ctx.auctionHousePdasClient.fee({
     auctionHouse,
-    buyer.publicKey
-  );
-  const buyerTradeState = findAuctionHouseTradeStatePda(
+  });
+  const auctionHouseTreasury = ctx.auctionHousePdasClient.treasury({
     auctionHouse,
-    buyer.publicKey,
+  });
+  const tokenAccount = await getAssociatedTokenAddress(mint, seller);
+  const escrowPaymentAccount = ctx.auctionHousePdasClient.buyerEscrow({
+    auctionHouse,
+    buyer: buyer.publicKey,
+  });
+  const buyerTradeState = ctx.auctionHousePdasClient.tradeState({
+    auctionHouse,
+    wallet: buyer.publicKey,
     tokenAccount,
-    NATIVE_MINT,
-    mint,
-    new BN(price),
-    new BN(amount)
-  );
-  const sellerTradeState = findAuctionHouseTradeStatePda(
+    treasuryMint: NATIVE_MINT,
+    tokenMint: mint,
+    price: new BN(price) as BigNumber,
+    tokenSize: new BN(amount) as BigNumber,
+  });
+  const sellerTradeState = ctx.auctionHousePdasClient.tradeState({
     auctionHouse,
-    seller,
+    wallet: seller,
     tokenAccount,
-    NATIVE_MINT,
-    mint,
-    new BN(price),
-    new BN(amount)
-  );
-  const freeTradeState = findAuctionHouseTradeStatePda(
+    treasuryMint: NATIVE_MINT,
+    tokenMint: mint,
+    price: new BN(price) as BigNumber,
+    tokenSize: new BN(amount) as BigNumber,
+  });
+  const freeTradeState = ctx.auctionHousePdasClient.tradeState({
     auctionHouse,
-    seller,
+    wallet: seller,
     tokenAccount,
-    NATIVE_MINT,
-    mint,
-    new BN(0),
-    new BN(amount)
-  );
-  const programAsSigner = findAuctionHouseProgramAsSignerPda();
+    treasuryMint: NATIVE_MINT,
+    tokenMint: mint,
+    price: new BN(0) as BigNumber,
+    tokenSize: new BN(amount) as BigNumber,
+  });
+  const programAsSigner = ctx.auctionHousePdasClient.programAsSigner();
   const ix = createExecuteSaleInstruction(
     {
       buyer: buyer.publicKey,
@@ -277,7 +296,7 @@ export async function executeSale(
       treasuryMint: NATIVE_MINT,
       escrowPaymentAccount,
       sellerPaymentReceiptAccount: seller,
-      buyerReceiptTokenAccount: findAssociatedTokenAccountPda(
+      buyerReceiptTokenAccount: await getAssociatedTokenAddress(
         mint,
         buyer.publicKey
       ),
@@ -314,8 +333,13 @@ export async function withdrawFromTreasury(
   ctx: Context,
   authority: Keypair
 ): Promise<void> {
-  const auctionHouse = findAuctionHousePda(authority.publicKey, NATIVE_MINT);
-  const auctionHouseTreasury = findAuctionHouseTreasuryPda(auctionHouse);
+  const auctionHouse = ctx.auctionHousePdasClient.auctionHouse({
+    creator: authority.publicKey,
+    treasuryMint: NATIVE_MINT,
+  });
+  const auctionHouseTreasury = ctx.auctionHousePdasClient.treasury({
+    auctionHouse,
+  });
   const amount =
     (await ctx.provider.connection.getBalance(auctionHouseTreasury)) -
     (await ctx.provider.connection.getMinimumBalanceForRentExemption(0));

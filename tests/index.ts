@@ -28,7 +28,7 @@ describe("NFT marketplace", () => {
       ctx,
       ctx.auctionHouseAuthority.publicKey,
       ctx.seller,
-      ctx.nft.mintAddress,
+      ctx.nft.mint.address,
       ctx.nft.metadataAddress,
       100_000,
       1
@@ -41,7 +41,7 @@ describe("NFT marketplace", () => {
       ctx.auctionHouseAuthority.publicKey,
       ctx.seller.publicKey,
       ctx.buyer,
-      ctx.nft.mintAddress,
+      ctx.nft.mint.address,
       ctx.nft.metadataAddress,
       100_000,
       1
@@ -63,7 +63,7 @@ describe("NFT marketplace", () => {
       ctx.auctionHouseAuthority.publicKey,
       ctx.seller.publicKey,
       ctx.buyer,
-      ctx.nft.mintAddress,
+      ctx.nft.mint.address,
       ctx.nft.metadataAddress,
       100_000,
       1,
